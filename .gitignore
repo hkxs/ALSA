@@ -1,5 +1,9 @@
 #Files
 *.out
+.cproject
+.project
 
 #Folders
 .metadata/
+.settings/
+Debug/
