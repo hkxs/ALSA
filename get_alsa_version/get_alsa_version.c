@@ -1,6 +1,6 @@
 /*******************************************************************************
-* @file         : read_hw_devices.c
-* @brief        : this program will list the audio devices found
+* @file         : get_alsa_version.c
+* @brief        : this program will show the version of alsa-lib installed
 *
 * @description  :
 *
@@ -53,7 +53,7 @@
 *
 * @brief Main function
 *
-* @description
+* @description Prints the alsa-lib version
 *
 * @param None
 *
@@ -62,8 +62,11 @@
 *******************************************************************************/
 int main(void)
 {
+  char *alsa_version;
 
-  printf("ALSA library version: %s\n", SND_LIB_VERSION_STR);
+  /* Returns the ALSA sound library version in ASCII format.  */
+  alsa_version = snd_asoundlib_version();
+  printf("ALSA library version: %s\n", alsa_version);
 
 }
 
