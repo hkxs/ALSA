@@ -98,7 +98,7 @@ int main (void)
    *                   the sample data for the second channel */
   hw_configuration hw_configuration = { .sample_rate = 48000u,
       .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
-      .frame_size = 1024, .access_type = SND_PCM_ACCESS_MMAP_NONINTERLEAVED,
+      .frame_size = 1024, .access_type = SND_PCM_ACCESS_RW_NONINTERLEAVED,
       .num_channels = 1, .number_of_frames = 1, .frame_size_direction =
           E_EXACT_CONFIG, .format = SND_PCM_FORMAT_S16_LE };
 
@@ -110,7 +110,7 @@ int main (void)
    */
   char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
 
-  uint8_t err = 0u;
+  int8_t err = 0u;
 
   float frequency = 100;
   float sine;
@@ -140,26 +140,26 @@ int main (void)
    * @a SND_PCM_STATE_OPEN state */
   err = snd_pcm_open (&pcm_handle, pcm_name, stream_direction,
   PCM_OPEN_STANDARD_MODE);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error opening sound card\n");
+    printf ("Error opening sound card, Err = %d\n", err);
     return S_ERROR;
   }
 
   /* Start setting HW parameters defined in hw_configuration */
   err = snd_pcm_hw_params_set_access (pcm_handle, hw_params,
                                       hw_configuration.access_type);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error setting access type\n");
+    printf ("Error setting access type, Err = %d\n", err);
     return S_ERROR;
   }
 
   err = snd_pcm_hw_params_set_format (pcm_handle, hw_params,
                                       hw_configuration.format);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error setting audio format type\n");
+    printf ("Error setting audio format type, Err = %d\n", err);
     return S_ERROR;
   }
 
@@ -170,12 +170,12 @@ int main (void)
   err = snd_pcm_hw_params_set_rate_near (
       pcm_handle, hw_params, &hw_configuration.exact_sample_rate,
       &hw_configuration.sample_rate_direction);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error setting sample rate\n");
+    printf ("Error setting sample rate, Err = %d\n", err);
     return S_ERROR;
   }
-  if (hw_configuration.sample_rate!=hw_configuration.exact_sample_rate)
+  if ( hw_configuration.sample_rate!=hw_configuration.exact_sample_rate )
   {
     printf ("Sample rate not supported, using = %d Hz",
             hw_configuration.exact_sample_rate);
@@ -183,16 +183,16 @@ int main (void)
 
   err = snd_pcm_hw_params_set_channels (pcm_handle, hw_params,
                                         hw_configuration.num_channels);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error setting number of channels\n");
+    printf ("Error setting number of channels, Err = %d\n", err);
     return S_ERROR;
   }
 
   err = snd_pcm_hw_params_set_periods_near (
       pcm_handle, hw_params, &hw_configuration.frame_size,
       &hw_configuration.frame_size_direction);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
     printf ("Error setting number of periods\n");
     return S_ERROR;
@@ -203,17 +203,17 @@ int main (void)
       >>2;
   err = snd_pcm_hw_params_set_buffer_size_near (pcm_handle, hw_params,
                                                 &buffer_size);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    printf ("Error setting number buffer size\n");
+    printf ("Error setting number buffer size, Err = %d\n", err);
     return S_ERROR;
   }
 
   /* Apply the configuration to the sound card */
   err = snd_pcm_hw_params (pcm_handle, hw_params);
-  if (S_SUCCESS!=err)
+  if ( S_SUCCESS!=err )
   {
-    fprintf (stderr, "Error setting HW params.\n");
+    fprintf (stderr, "Error setting HW params, Err = %d\n", err);
     return (-1);
   }
 
