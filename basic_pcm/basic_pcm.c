@@ -4,7 +4,7 @@
  *
  * @description  : Simple client for the ALSA sequencer
  *
- * @notes        : Link using -lasound, based on the HOWTO
+ * @notes        : Link using -lasound and -lm, based on the HOWTO
  *                 https://users.suse.com/~mana/alsa090_howto.html
  *
  * @author       : hkxs
@@ -37,6 +37,7 @@
  * Includes
  *******************************************************************************/
 #include <alsa/asoundlib.h>
+#include <math.h>
 
 /******************************************************************************
  * Module Preprocessor Constants
@@ -44,6 +45,9 @@
 #define S_SUCCESS               (0x00)
 #define S_ERROR                 (0x01)
 #define PCM_OPEN_STANDARD_MODE  (0x00)
+
+#define OFFSET                  (1.0f)
+#define Q_15_SHIFT              (0x0F)
 
 /******************************************************************************
  * Module Typedefs
@@ -92,10 +96,10 @@ int main (void)
    * @li access type = non interleaved, this means that each period contains
    *                   first all sample data for the first channel followed by
    *                   the sample data for the second channel */
-  hw_configuration headphones_hw_configuration = { .sample_rate = 48000u,
+  hw_configuration hw_configuration = { .sample_rate = 48000u,
       .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
       .frame_size = 1024, .access_type = SND_PCM_ACCESS_MMAP_NONINTERLEAVED,
-      .num_channels = 2, .number_of_frames = 1, .frame_size_direction =
+      .num_channels = 1, .number_of_frames = 1, .frame_size_direction =
           E_EXACT_CONFIG, .format = SND_PCM_FORMAT_S16_LE };
 
   snd_pcm_uframes_t buffer_size;
@@ -107,6 +111,12 @@ int main (void)
   char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
 
   uint8_t err = 0u;
+
+  float frequency = 100;
+  float sine;
+  float omega;
+  uint8_t *data;
+  uint16_t data_size;
 
   /* Allocate snd_pcm_hw_params_t structure on the stack.
    * @note we can also use @a snd_pcm_hw_params_malloc() to allocate the
@@ -130,24 +140,24 @@ int main (void)
    * @a SND_PCM_STATE_OPEN state */
   err = snd_pcm_open (&pcm_handle, pcm_name, stream_direction,
   PCM_OPEN_STANDARD_MODE);
-  if (S_SUCCESS != err)
+  if (S_SUCCESS!=err)
   {
     printf ("Error opening sound card\n");
     return S_ERROR;
   }
 
-  /* Start setting HW parameters defined in headphones_hw_configuration */
+  /* Start setting HW parameters defined in hw_configuration */
   err = snd_pcm_hw_params_set_access (pcm_handle, hw_params,
-                                      headphones_hw_configuration.access_type);
-  if (S_SUCCESS != err)
+                                      hw_configuration.access_type);
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting access type\n");
     return S_ERROR;
   }
 
   err = snd_pcm_hw_params_set_format (pcm_handle, hw_params,
-                                      headphones_hw_configuration.format);
-  if (S_SUCCESS != err)
+                                      hw_configuration.format);
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting audio format type\n");
     return S_ERROR;
@@ -155,46 +165,45 @@ int main (void)
 
   /* We'll set the sampling rate, and in case it's not supported by the sound
    * card, it will set the nearest sample rate supported,, the variable
-   * @a headphones_hw_configuration.exact_sample_rate will have the configured
+   * @a hw_configuration.exact_sample_rate will have the configured
    * sample rate */
   err = snd_pcm_hw_params_set_rate_near (
-      pcm_handle, hw_params, &headphones_hw_configuration.exact_sample_rate,
-      &headphones_hw_configuration.sample_rate_direction);
-  if (S_SUCCESS != err)
+      pcm_handle, hw_params, &hw_configuration.exact_sample_rate,
+      &hw_configuration.sample_rate_direction);
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting sample rate\n");
     return S_ERROR;
   }
-  if (headphones_hw_configuration.sample_rate
-      != headphones_hw_configuration.exact_sample_rate)
+  if (hw_configuration.sample_rate!=hw_configuration.exact_sample_rate)
   {
     printf ("Sample rate not supported, using = %d Hz",
-            headphones_hw_configuration.exact_sample_rate);
+            hw_configuration.exact_sample_rate);
   }
 
-  err = snd_pcm_hw_params_set_channels (
-      pcm_handle, hw_params, headphones_hw_configuration.num_channels);
-  if (S_SUCCESS != err)
+  err = snd_pcm_hw_params_set_channels (pcm_handle, hw_params,
+                                        hw_configuration.num_channels);
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting number of channels\n");
     return S_ERROR;
   }
 
   err = snd_pcm_hw_params_set_periods_near (
-      pcm_handle, hw_params, &headphones_hw_configuration.frame_size,
-      &headphones_hw_configuration.frame_size_direction);
-  if (S_SUCCESS != err)
+      pcm_handle, hw_params, &hw_configuration.frame_size,
+      &hw_configuration.frame_size_direction);
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting number of periods\n");
     return S_ERROR;
   }
 
   /* @note buffer_size is the approximate target buffer size in frames */
-  buffer_size = (headphones_hw_configuration.frame_size
-      * headphones_hw_configuration.number_of_frames) >> 2;
+  buffer_size = (hw_configuration.frame_size*hw_configuration.number_of_frames)
+      >>2;
   err = snd_pcm_hw_params_set_buffer_size_near (pcm_handle, hw_params,
                                                 &buffer_size);
-  if (S_SUCCESS != err)
+  if (S_SUCCESS!=err)
   {
     printf ("Error setting number buffer size\n");
     return S_ERROR;
@@ -202,12 +211,36 @@ int main (void)
 
   /* Apply the configuration to the sound card */
   err = snd_pcm_hw_params (pcm_handle, hw_params);
-  if (S_SUCCESS != err)
+  if (S_SUCCESS!=err)
   {
     fprintf (stderr, "Error setting HW params.\n");
     return (-1);
   }
 
+  /* With everything set we can start writing data the API is different
+   * depending of the access_type:
+   * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
+   * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
+
+  /* we use hw_configuration.frame_size>>1 because the frame size is specified
+   *  in bytes and we're using uint16_t data */
+  data_size = hw_configuration.frame_size>>1;
+  data = (uint8_t*)malloc (hw_configuration.frame_size);
+
+  for (uint16_t n = 0; n<data_size; n++)
+  {
+    omega = 2*M_PI*(frequency/(float)hw_configuration.exact_sample_rate);
+    sine = sin (omega*n)+OFFSET;
+    data[n] = (uint16_t)(sine*(1<<Q_15_SHIFT));
+  }
+
+  for (uint16_t number_of_frames = 0; number_of_frames<100; number_of_frames++)
+  {
+    /* wait until sound card is ready */
+    while (0>snd_pcm_writen (pcm_handle, (void*)&data, data_size));
+  }
+
+  free (data);
 }
 
 /*************** END OF FILE **************************************************/
