@@ -135,8 +135,6 @@ int main (void)
     return S_ERROR;
   }
 
-  printf ("HW configuration finished\n");
-
   /* With everything set we can start writing data the API is different
    * depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
@@ -190,7 +188,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
   err = snd_pcm_hw_params_any (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
-    printf ("Error getting HW configuration\n");
+    printf ("configure_hw Error: getting HW configuration\n");
     return S_ERROR;
   }
 
@@ -198,7 +196,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                       hw_config->access_type);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting access type, Err = %d\n", err);
+    printf ("configure_hw Error: setting access type, Err = %d\n", err);
     return S_ERROR;
   }
 
@@ -206,7 +204,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                       hw_config->format);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting audio format type, Err = %d\n", err);
+    printf ("configure_hw Error: setting audio format type, Err = %d\n", err);
     return S_ERROR;
   }
 
@@ -220,12 +218,12 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                          &hw_config->sample_rate_direction);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting sample rate, Err = %d\n", err);
+    printf ("configure_hw Error: setting sample rate, Err = %d\n", err);
     return S_ERROR;
   }
   if ( hw_config->sample_rate!=hw_config->exact_sample_rate )
   {
-    printf ("Sample rate not supported, using = %d Hz\n",
+    printf ("configure_hw Error: rate not supported, using = %d Hz\n",
             hw_config->exact_sample_rate);
   }
 
@@ -233,7 +231,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                         hw_config->num_channels);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting number of channels, Err = %d\n", err);
+    printf ("configure_hw Error: setting number of channels, Err = %d\n", err);
     return S_ERROR;
   }
 
@@ -242,7 +240,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                             &hw_config->frame_size_direction);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting number of periods\n");
+    printf ("configure_hw Error: setting number of periods\n");
     return S_ERROR;
   }
 
@@ -252,7 +250,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
                                                 &buffer_size);
   if ( S_SUCCESS>err )
   {
-    printf ("Error setting number buffer size, Err = %d\n", err);
+    printf ("configure_hw Error: setting number buffer size, Err = %d\n", err);
     return S_ERROR;
   }
 
@@ -260,10 +258,11 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
   err = snd_pcm_hw_params (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
-    fprintf (stderr, "Error setting HW params, Err = %d\n", err);
+    printf ("configure_hw Error: setting HW params, Err = %d\n", err);
     return S_ERROR;
   }
 
+  printf ("HW configuration successful\n");
   return S_SUCCESS;
 }
 
