@@ -66,8 +66,8 @@ typedef struct
   uint32_t exact_sample_rate; /* sample rate set by the sound card */
   sub_unit_direction sample_rate_direction;
   sub_unit_direction frame_size_direction;
-  uint32_t frame_size; /* size of the frames in bytes*/
-  uint32_t number_of_frames;
+  snd_pcm_uframes_t period_size; /* size of the frames in bytes*/
+  uint32_t periods;
   snd_pcm_access_t access_type;
   uint32_t num_channels;
   snd_pcm_format_t format;
@@ -76,6 +76,7 @@ typedef struct
 /******************************************************************************
  * Function Prototypes
  *******************************************************************************/
+int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config);
 
 int main (void)
 {
@@ -85,11 +86,6 @@ int main (void)
   /* Direction of the stream, to play or record */
   snd_pcm_stream_t stream_direction = SND_PCM_STREAM_PLAYBACK;
 
-  /* This structure contains information about    */
-  /* the hardware and can be used to specify the  */
-  /* configuration for the PCM stream. */
-  snd_pcm_hw_params_t *hw_params;
-
   /* hardware configuration that we want
    * @li sample rate = 48KHz
    * @li frame size = 1024 bytes
@@ -98,11 +94,9 @@ int main (void)
    *                   the sample data for the second channel */
   hw_configuration hw_configuration = { .sample_rate = 48000u,
       .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
-      .frame_size = 1024, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
-      .num_channels = 2, .number_of_frames = 1, .frame_size_direction =
-          E_EXACT_CONFIG, .format = SND_PCM_FORMAT_S16_LE };
-
-  snd_pcm_uframes_t buffer_size;
+      .period_size = 1024, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
+      .num_channels = 2, .periods = 1, .frame_size_direction = E_EXACT_CONFIG,
+      .format = SND_PCM_FORMAT_S16_LE };
 
   /* Name of the PCM device, like @a plughw:0,0
    * @li The first number is the number of the soundcard
@@ -111,18 +105,6 @@ int main (void)
   char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
 
   int8_t err = 0u;
-
-  float frequency = 100;
-  float sine;
-  float omega;
-  uint8_t *data;
-  uint16_t data_size;
-
-  /* Allocate snd_pcm_hw_params_t structure on the stack.
-   * @note we can also use @a snd_pcm_hw_params_malloc() to allocate the
-   * memory, but we'll be responsible for free it when we finish using
-   * @a snd_pcm_hw_params_free() */
-  snd_pcm_hw_params_alloca(&hw_params);
 
   /* Create a handle and open a connection to a specified audio interface
    * This function receives as arguments:
@@ -146,26 +128,82 @@ int main (void)
     return S_ERROR;
   }
 
-  /* Rad all the hardware configuration for the sound card before setting the
+  err = configure_hw (pcm_handle, &hw_configuration);
+  if ( S_SUCCESS>err )
+  {
+    printf ("Unable to configure HW, Err = %d\n", err);
+    return S_ERROR;
+  }
+
+  printf ("HW configuration finished\n");
+
+  /* With everything set we can start writing data the API is different
+   * depending of the access_type:
+   * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
+   * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
+
+#if 0
+  /* This frequency was selected to create a 100 "complete" cycles a sine wave
+   * for 1024 samples */
+  float frequency = 468;
+  float sine;
+  float omega;
+  int16_t *data;
+#endif
+  /* close the sound card */
+  snd_pcm_close (pcm_handle);
+}
+
+/******************************************************************************
+ *
+ * @brief This function is used to configure the HW of the sound card
+ *
+ * @description Set HW parameters defined in hw_configuration, part of this can
+ * be done also with @a snd_pcm_set_params but I prefer to do it manually to
+ * learn a little more of the APIs ¯\_(ツ)_/¯
+ *
+ * @param[in] sound_card_handle     poiinter to the handle of the sound card
+ * @param[in] hw_config             poiinter to desired hw configuration
+ *
+ * @return @a S_SUCCESS in case of success, @S_ERROR otherwise
+ *
+ *******************************************************************************/
+
+int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
+{
+  int8_t err;
+  snd_pcm_uframes_t buffer_size;
+
+  /* This structure contains information about    */
+  /* the hardware and can be used to specify the  */
+  /* configuration for the PCM stream. */
+  snd_pcm_hw_params_t *hw_params;
+
+  /* Allocate snd_pcm_hw_params_t structure on the stack.
+   * @note we can also use @a snd_pcm_hw_params_malloc() to allocate the
+   * memory, but we'll be responsible for free it when we finish using
+   * @a snd_pcm_hw_params_free() */
+  snd_pcm_hw_params_alloca(&hw_params);
+
+  /* Read all the hardware configuration for the sound card before setting the
    * configuration we want*/
-  err = snd_pcm_hw_params_any (pcm_handle, hw_params);
+  err = snd_pcm_hw_params_any (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
     printf ("Error getting HW configuration\n");
     return S_ERROR;
   }
 
-  /* Start setting HW parameters defined in hw_configuration */
-  err = snd_pcm_hw_params_set_access (pcm_handle, hw_params,
-                                      hw_configuration.access_type);
+  err = snd_pcm_hw_params_set_access (sound_card_handle, hw_params,
+                                      hw_config->access_type);
   if ( S_SUCCESS>err )
   {
     printf ("Error setting access type, Err = %d\n", err);
     return S_ERROR;
   }
 
-  err = snd_pcm_hw_params_set_format (pcm_handle, hw_params,
-                                      hw_configuration.format);
+  err = snd_pcm_hw_params_set_format (sound_card_handle, hw_params,
+                                      hw_config->format);
   if ( S_SUCCESS>err )
   {
     printf ("Error setting audio format type, Err = %d\n", err);
@@ -176,31 +214,32 @@ int main (void)
    * card, it will set the nearest sample rate supported,, the variable
    * @a hw_configuration.exact_sample_rate will have the configured
    * sample rate */
-  err = snd_pcm_hw_params_set_rate_near (
-      pcm_handle, hw_params, &hw_configuration.exact_sample_rate,
-      &hw_configuration.sample_rate_direction);
+  hw_config->exact_sample_rate = hw_config->sample_rate;
+  err = snd_pcm_hw_params_set_rate_near (sound_card_handle, hw_params,
+                                         &hw_config->exact_sample_rate,
+                                         &hw_config->sample_rate_direction);
   if ( S_SUCCESS>err )
   {
     printf ("Error setting sample rate, Err = %d\n", err);
     return S_ERROR;
   }
-  if ( hw_configuration.sample_rate!=hw_configuration.exact_sample_rate )
+  if ( hw_config->sample_rate!=hw_config->exact_sample_rate )
   {
     printf ("Sample rate not supported, using = %d Hz\n",
-            hw_configuration.exact_sample_rate);
+            hw_config->exact_sample_rate);
   }
 
-  err = snd_pcm_hw_params_set_channels (pcm_handle, hw_params,
-                                        hw_configuration.num_channels);
+  err = snd_pcm_hw_params_set_channels (sound_card_handle, hw_params,
+                                        hw_config->num_channels);
   if ( S_SUCCESS>err )
   {
     printf ("Error setting number of channels, Err = %d\n", err);
     return S_ERROR;
   }
 
-  err = snd_pcm_hw_params_set_periods_near (
-      pcm_handle, hw_params, &hw_configuration.frame_size,
-      &hw_configuration.frame_size_direction);
+  err = snd_pcm_hw_params_set_periods_near (sound_card_handle, hw_params,
+                                            &hw_config->periods,
+                                            &hw_config->frame_size_direction);
   if ( S_SUCCESS>err )
   {
     printf ("Error setting number of periods\n");
@@ -208,9 +247,8 @@ int main (void)
   }
 
   /* @note buffer_size is the approximate target buffer size in frames */
-  buffer_size = (hw_configuration.frame_size*hw_configuration.number_of_frames)
-      >>2;
-  err = snd_pcm_hw_params_set_buffer_size_near (pcm_handle, hw_params,
+  buffer_size = (hw_config->period_size*hw_config->periods)>>2;
+  err = snd_pcm_hw_params_set_buffer_size_near (sound_card_handle, hw_params,
                                                 &buffer_size);
   if ( S_SUCCESS>err )
   {
@@ -219,48 +257,14 @@ int main (void)
   }
 
   /* Apply the configuration to the sound card */
-  err = snd_pcm_hw_params (pcm_handle, hw_params);
+  err = snd_pcm_hw_params (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
     fprintf (stderr, "Error setting HW params, Err = %d\n", err);
-    return (-1);
+    return S_ERROR;
   }
 
-  printf ("HW configuration finished\n");
-
-  /* With everything set we can start writing data the API is different
-   * depending of the access_type:
-   * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
-   * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
-
-  /* we use hw_configuration.frame_size>>1 because the frame size is specified
-   *  in bytes and we're using uint16_t data */
-  data_size = hw_configuration.frame_size>>1;
-  data = (uint8_t*)malloc (hw_configuration.frame_size);
-
-  printf ("Generating sine wave\n");
-
-  for (uint16_t n = 0; n<data_size; n++)
-  {
-    omega = 2*M_PI*(frequency/(float)hw_configuration.exact_sample_rate);
-    sine = sin (omega*n)+OFFSET;
-    data[n] = (uint16_t)(sine*(1<<Q_15_SHIFT));
-  }
-
-  printf ("sine wave generated\n");
-
-  printf ("Start reproducing sound\n");
-
-  for (uint16_t number_of_frames = 0; number_of_frames<100; number_of_frames++)
-  {
-    /* wait until sound card is ready */
-    while (0>snd_pcm_writei (pcm_handle, (void*)&data, data_size))
-    {
-      printf ("Waiting for sound card\n");
-    }
-  }
-
-  //free (data);
+  return S_SUCCESS;
 }
 
 /*************** END OF FILE **************************************************/
