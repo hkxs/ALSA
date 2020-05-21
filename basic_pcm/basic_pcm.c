@@ -98,8 +98,8 @@ int main (void)
    *                   the sample data for the second channel */
   hw_configuration hw_configuration = { .sample_rate = 48000u,
       .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
-      .frame_size = 1024, .access_type = SND_PCM_ACCESS_RW_NONINTERLEAVED,
-      .num_channels = 1, .number_of_frames = 1, .frame_size_direction =
+      .frame_size = 1024, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
+      .num_channels = 2, .number_of_frames = 1, .frame_size_direction =
           E_EXACT_CONFIG, .format = SND_PCM_FORMAT_S16_LE };
 
   snd_pcm_uframes_t buffer_size;
@@ -146,6 +146,15 @@ int main (void)
     return S_ERROR;
   }
 
+  /* Rad all the hardware configuration for the sound card before setting the
+   * configuration we want*/
+  err = snd_pcm_hw_params_any (pcm_handle, hw_params);
+  if ( S_SUCCESS>err )
+  {
+    printf ("Error getting HW configuration\n");
+    return S_ERROR;
+  }
+
   /* Start setting HW parameters defined in hw_configuration */
   err = snd_pcm_hw_params_set_access (pcm_handle, hw_params,
                                       hw_configuration.access_type);
@@ -177,7 +186,7 @@ int main (void)
   }
   if ( hw_configuration.sample_rate!=hw_configuration.exact_sample_rate )
   {
-    printf ("Sample rate not supported, using = %d Hz",
+    printf ("Sample rate not supported, using = %d Hz\n",
             hw_configuration.exact_sample_rate);
   }
 
@@ -217,6 +226,8 @@ int main (void)
     return (-1);
   }
 
+  printf ("HW configuration finished\n");
+
   /* With everything set we can start writing data the API is different
    * depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
@@ -227,6 +238,8 @@ int main (void)
   data_size = hw_configuration.frame_size>>1;
   data = (uint8_t*)malloc (hw_configuration.frame_size);
 
+  printf ("Generating sine wave\n");
+
   for (uint16_t n = 0; n<data_size; n++)
   {
     omega = 2*M_PI*(frequency/(float)hw_configuration.exact_sample_rate);
@@ -234,13 +247,20 @@ int main (void)
     data[n] = (uint16_t)(sine*(1<<Q_15_SHIFT));
   }
 
+  printf ("sine wave generated\n");
+
+  printf ("Start reproducing sound\n");
+
   for (uint16_t number_of_frames = 0; number_of_frames<100; number_of_frames++)
   {
     /* wait until sound card is ready */
-    while (0>snd_pcm_writen (pcm_handle, (void*)&data, data_size));
+    while (0>snd_pcm_writei (pcm_handle, (void*)&data, data_size))
+    {
+      printf ("Waiting for sound card\n");
+    }
   }
 
-  free (data);
+  //free (data);
 }
 
 /*************** END OF FILE **************************************************/
