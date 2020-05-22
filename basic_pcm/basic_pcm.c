@@ -100,8 +100,7 @@ int main (void)
 
   /* Name of the PCM device, like @a plughw:0,0
    * @li The first number is the number of the soundcard
-   * @li The second number is the number of the device.
-   */
+   * @li The second number is the number of the device */
   char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
 
   int8_t err = 0u;
@@ -132,24 +131,57 @@ int main (void)
   if ( S_SUCCESS>err )
   {
     printf ("Unable to configure HW, Err = %d\n", err);
+    snd_pcm_close (pcm_handle);
+
     return S_ERROR;
   }
+
+  /* Now it's time to generate a signal to test the output of the sound card */
+  int16_t *noise;
+  uint8_t noise_frames = 23; /*0.5s ~= 23*1024/48000*/
+  uint32_t noise_size;
+
+  printf ("Generating random noise\n");
+  noise_size = hw_configuration.period_size*noise_frames;
+  noise = (int16_t*)malloc (sizeof(noise_size)*noise_size);
+
+  for (uint32_t i = 0u; i<noise_size; i++)
+  {
+    noise[i] = (int16_t)random ();
+  }
+
+  printf ("Sending data to sound card\n");
 
   /* With everything set we can start writing data the API is different
    * depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
    * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
+  for (uint8_t i = 0u; i<noise_frames; i++)
+  {
+    err = snd_pcm_writei (pcm_handle, noise, hw_configuration.period_size);
 
-#if 0
-  /* This frequency was selected to create a 100 "complete" cycles a sine wave
-   * for 1024 samples */
-  float frequency = 468;
-  float sine;
-  float omega;
-  int16_t *data;
-#endif
+    /* if we fail we try to recover the stream state*/
+    if ( S_SUCCESS>err )
+    {
+      err = snd_pcm_recover (pcm_handle, err, 1);
+    }
+
+    /* if we fail from recovery we suspend everything*/
+    if ( S_SUCCESS>err )
+    {
+      printf ("Error writing data to the sound card\n");
+      free (noise);
+      snd_pcm_close (pcm_handle);
+
+      return S_ERROR;
+    }
+  }
+
+  free (noise);
   /* close the sound card */
   snd_pcm_close (pcm_handle);
+
+  return S_SUCCESS;
 }
 
 /******************************************************************************
