@@ -145,6 +145,14 @@ int main (void)
   noise_size = hw_configuration.period_size*noise_frames;
   noise = (int16_t*)malloc (sizeof(noise_size)*noise_size);
 
+  if ( NULL==noise )
+  {
+    printf ("Error allocating memory for the audio signal\n");
+    snd_pcm_close (pcm_handle);
+
+    return S_ERROR;
+  }
+
   for (uint32_t i = 0u; i<noise_size; i++)
   {
     noise[i] = (int16_t)random ();
@@ -224,6 +232,14 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
+  /* Set the type of transfer mode, there are basically two kinds:
+   * 1. Regular: using direct write functions
+   * 2. Mmap: writing to a memory pointer,
+   * and this two tyoes can be divided in:
+   * 1. Interleaved: each frame in the buffer contains the consecutive sample
+   *    data for the channels.
+   * 2. NonInterleaved: the buffer contains alternating words of sample data
+   *    for every channel*/
   err = snd_pcm_hw_params_set_access (sound_card_handle, hw_params,
                                       hw_config->access_type);
   if ( S_SUCCESS>err )
@@ -240,8 +256,8 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /* We'll set the sampling rate, and in case it's not supported by the sound
-   * card, it will set the nearest sample rate supported,, the variable
+  /* We'll set the sampling rate (in Hz). In case it's not supported by the
+   * sound card, it will set the nearest sample rate supported,, the variable
    * @a hw_configuration.exact_sample_rate will have the configured
    * sample rate */
   hw_config->exact_sample_rate = hw_config->sample_rate;
