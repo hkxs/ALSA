@@ -76,6 +76,7 @@ typedef struct
 /******************************************************************************
  * Function Prototypes
  *******************************************************************************/
+
 int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config);
 
 int main (void)
@@ -193,6 +194,7 @@ int main (void)
 }
 
 /******************************************************************************
+ * @fn int8_t configure_hw(snd_pcm_t*, hw_configuration*)
  *
  * @brief This function is used to configure the HW of the sound card
  *
@@ -203,10 +205,9 @@ int main (void)
  * @param[in] sound_card_handle     poiinter to the handle of the sound card
  * @param[in] hw_config             poiinter to desired hw configuration
  *
- * @return @a S_SUCCESS in case of success, @S_ERROR otherwise
+ * @return int8_t S_SUCCESS in case of success, @S_ERROR otherwise
  *
- *******************************************************************************/
-
+ ******************************************************************************/
 int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
 {
   int8_t err;
