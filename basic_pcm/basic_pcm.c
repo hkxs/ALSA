@@ -33,61 +33,94 @@
  * SOFTWARE.
  *******************************************************************************/
 
-/******************************************************************************
+/*------------------------------------------------------------------------------
  * Includes
- *******************************************************************************/
+ -----------------------------------------------------------------------------*/
 #include <alsa/asoundlib.h>
 #include <math.h>
 
-/******************************************************************************
+/*------------------------------------------------------------------------------
  * Module Preprocessor Constants
- *******************************************************************************/
-#define S_SUCCESS               (0x00)
-#define S_ERROR                 (0x01)
-#define PCM_OPEN_STANDARD_MODE  (0x00)
+ -----------------------------------------------------------------------------*/
+#define S_SUCCESS               (0x00) /**< used to return success*/
+#define S_ERROR                 (0x01)/**< used to return error*/
+#define PCM_OPEN_STANDARD_MODE  (0x00)/**< define standard mode*/
 
-#define OFFSET                  (1.0f)
-#define Q_15_SHIFT              (0x0F)
-
-/******************************************************************************
+/*------------------------------------------------------------------------------
  * Module Typedefs
- *******************************************************************************/
-/* @note this enum is used for configuring sample rate and number of periods*/
+ -----------------------------------------------------------------------------*/
+/** This enum is used for configuring sample rate and number of periods
+ * @todo I need to investigate more how this parameter affects the parameters
+ *       selecting -1,0 or 1 doesn't seems to differ when I'm selecting
+ *       unsupported sample rates (supported samples: 44100 48000 96000 192000):
+ *       @li Test 1, sub_unit_direction = 0:
+ *              - 45k => 44.1k
+ *              - 47k => 48k
+ *              - 48k => 48k
+ *              - 60k => 48k
+ *              - 90k => 96k
+ *       @li Test 2, sub_unit_direction = -1:
+ *              - 45k => 44.1k
+ *              - 47k => 48k
+ *              - 48k => 48k
+ *              - 60k => 48k
+ *              - 90k => 96k
+ *       @li Test 3, sub_unit_direction = 1:
+ *              - 45k => 44.1k
+ *              - 47k => 48k
+ *              - 48k => 48k
+ *              - 60k => 48k
+ *              - 90k => 96k
+ * The sample rate doesn't seems to be affected by that parameter*/
 typedef enum
 {
-  E_EXACT_CONFIG = 0,/* exact_rate == rate --> dir = 0 */
-  E_SMALLER_CONFIG = -1,/* exact_rate < rate  --> dir = -1 */
-  E_BIGGER_CONFIG = 1/* exact_rate > rate  --> dir = 1 */
+  E_EXACT_CONFIG = 0, /**< exact_rate == rate --> dir = 0 */
+  E_SMALLER_CONFIG = -1, /**< exact_rate < rate  --> dir = -1 */
+  E_BIGGER_CONFIG = 1 /**< exact_rate > rate  --> dir = 1 */
+
 } sub_unit_direction;
 
+/** Structure used to setup the desired hw configuration */
 typedef struct
 {
-  uint32_t sample_rate;
-  uint32_t exact_sample_rate; /* sample rate set by the sound card */
+  uint32_t sample_rate; /**< Desired sample rate*/
+  uint32_t exact_sample_rate; /**< Sample rate set by the sound card */
   sub_unit_direction sample_rate_direction;
   sub_unit_direction frame_size_direction;
-  snd_pcm_uframes_t period_size; /* size of the frames in bytes*/
+  snd_pcm_uframes_t period_size; /**< size of the frames in bytes*/
   uint32_t periods;
   snd_pcm_access_t access_type;
   uint32_t num_channels;
   snd_pcm_format_t format;
 } hw_configuration;
 
-/******************************************************************************
+/*------------------------------------------------------------------------------
  * Function Prototypes
- *******************************************************************************/
-
+ -----------------------------------------------------------------------------*/
 int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config);
 
+/******************************************************************************
+ *
+ * @fn int main (void)
+ *
+ * @brief Main function of the program
+ *
+ *  Main function of the program
+ *
+ * @param
+ *
+ * @return int  @a S_SUCCESS in case of success, @a S_ERROR otherwise
+ *
+ ******************************************************************************/
 int main (void)
 {
-  /* Handle for the PCM device */
+  /** @b snd_pcm_t  pcm_handle  Handle for the PCM device */
   snd_pcm_t *pcm_handle;
 
   /* Direction of the stream, to play or record */
   snd_pcm_stream_t stream_direction = SND_PCM_STREAM_PLAYBACK;
 
-  /* hardware configuration that we want
+  /** @b hw_configuration Hardware configuration that we want
    * @li sample rate = 48KHz
    * @li frame size = 1024 bytes
    * @li access type = non interleaved, this means that each period contains
@@ -99,15 +132,15 @@ int main (void)
       .num_channels = 2, .periods = 1, .frame_size_direction = E_EXACT_CONFIG,
       .format = SND_PCM_FORMAT_S16_LE };
 
-  /* Name of the PCM device, like @a plughw:0,0
+  /** @b pcm_name Name of the PCM device, like @a plughw:0,0
    * @li The first number is the number of the soundcard
    * @li The second number is the number of the device */
   char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
 
   int8_t err = 0u;
 
-  /* Create a handle and open a connection to a specified audio interface
-   * This function receives as arguments:
+  /** @b snd_pcm_open Create a handle and open a connection to a specified
+   * audio interface, this function receives as arguments:
    * 1. pcmp: handle for the audio interface
    * 2. name: name of the sound card like @a plughw:0,0
    * 3. stream: pcm stream direction (it can be SND_PCM_STREAM_PLAYBACK or
@@ -161,8 +194,8 @@ int main (void)
 
   printf ("Sending data to sound card\n");
 
-  /* With everything set we can start writing data the API is different
-   * depending of the access_type:
+  /** @b snd_pcm_writei With everything set we can start writing data the API
+   *  is different depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
    * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
   for (uint8_t i = 0u; i<noise_frames; i++)
@@ -198,14 +231,14 @@ int main (void)
  *
  * @brief This function is used to configure the HW of the sound card
  *
- * @description Set HW parameters defined in hw_configuration, part of this can
+ * Set HW parameters defined in hw_configuration, part of this can
  * be done also with @a snd_pcm_set_params but I prefer to do it manually to
  * learn a little more of the APIs ¯\_(ツ)_/¯
  *
- * @param[in] sound_card_handle     poiinter to the handle of the sound card
- * @param[in] hw_config             poiinter to desired hw configuration
+ * @param[in] sound_card_handle     pointer to the handle of the sound card
+ * @param[in] hw_config             pointer to desired hw configuration
  *
- * @return int8_t S_SUCCESS in case of success, @S_ERROR otherwise
+ * @return int8_t @a S_SUCCESS in case of success, @a S_ERROR otherwise
  *
  ******************************************************************************/
 int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
@@ -218,14 +251,14 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
   /* configuration for the PCM stream. */
   snd_pcm_hw_params_t *hw_params;
 
-  /* Allocate snd_pcm_hw_params_t structure on the stack.
-   * @note we can also use @a snd_pcm_hw_params_malloc() to allocate the
+  /**  @b snd_pcm_hw_params_alloca Allocate snd_pcm_hw_params_t structure
+   * on the stack.W e can also use @a snd_pcm_hw_params_malloc() to allocate the
    * memory, but we'll be responsible for free it when we finish using
    * @a snd_pcm_hw_params_free() */
   snd_pcm_hw_params_alloca(&hw_params);
 
-  /* Read all the hardware configuration for the sound card before setting the
-   * configuration we want*/
+  /** @b snd_pcm_hw_params_any Read all the hardware configuration for the
+   * sound card before setting the configuration we want*/
   err = snd_pcm_hw_params_any (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
@@ -233,7 +266,8 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /* Set the type of transfer mode, there are basically two kinds:
+  /** @b snd_pcm_hw_params_set_access Set the type of transfer mode, there are
+   *  basically two kinds:
    * 1. Regular: using direct write functions
    * 2. Mmap: writing to a memory pointer,
    * and this two tyoes can be divided in:
@@ -257,10 +291,10 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /* We'll set the sampling rate (in Hz). In case it's not supported by the
-   * sound card, it will set the nearest sample rate supported,, the variable
-   * @a hw_configuration.exact_sample_rate will have the configured
-   * sample rate */
+  /** @b snd_pcm_hw_params_set_rate_near We'll set the sampling rate (in Hz).
+   *  In case it's not supported by the sound card, it will set the nearest
+   *  sample rate supported,, the variable @a hw_configuration.exact_sample_rate
+   *   will have the configured sample rate */
   hw_config->exact_sample_rate = hw_config->sample_rate;
   err = snd_pcm_hw_params_set_rate_near (sound_card_handle, hw_params,
                                          &hw_config->exact_sample_rate,
@@ -272,8 +306,8 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
   }
   if ( hw_config->sample_rate!=hw_config->exact_sample_rate )
   {
-    printf ("configure_hw Error: rate not supported, using = %d Hz\n",
-            hw_config->exact_sample_rate);
+    printf ("configure_hw Warning: rate %d not supported, using = %d Hz\n",
+            hw_config->sample_rate, hw_config->exact_sample_rate);
   }
 
   err = snd_pcm_hw_params_set_channels (sound_card_handle, hw_params,
@@ -293,7 +327,8 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /* @note buffer_size is the approximate target buffer size in frames */
+  /** @b snd_pcm_hw_params_set_buffer_size_near buffer_size is the approximate
+   *  target buffer size in frames */
   buffer_size = (hw_config->period_size*hw_config->periods)>>2;
   err = snd_pcm_hw_params_set_buffer_size_near (sound_card_handle, hw_params,
                                                 &buffer_size);
@@ -303,7 +338,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /* Apply the configuration to the sound card */
+  /** @b snd_pcm_hw_params Apply the configuration to the sound card */
   err = snd_pcm_hw_params (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
@@ -314,5 +349,4 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
   printf ("HW configuration successful\n");
   return S_SUCCESS;
 }
-
-/*************** END OF FILE **************************************************/
+/*-------------- END OF FILE -------------------------------------------------*/

@@ -1,7 +1,11 @@
-#Files
+#File type
 *.out
+*.bak
+
+#Files
 .cproject
 .project
+
 
 #Folders
 .metadata/
