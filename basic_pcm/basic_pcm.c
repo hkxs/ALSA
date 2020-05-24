@@ -135,7 +135,7 @@ int main (void)
   /** @b pcm_name Name of the PCM device, like @a plughw:0,0
    * @li The first number is the number of the soundcard
    * @li The second number is the number of the device */
-  char *pcm_name = "hw:1,0"; /* Rear headphones, obtained from audacity */
+  char *pcm_name = "default"; /* Use default system audio card */
 
   int8_t err = 0u;
 
@@ -274,7 +274,9 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
    * 1. Interleaved: each frame in the buffer contains the consecutive sample
    *    data for the channels.
    * 2. NonInterleaved: the buffer contains alternating words of sample data
-   *    for every channel*/
+   *    for every channel
+   * 3. SND_PCM_ACCESS_MMAP_COMPLEX when the access doesn't fit to interleaved
+   *   and non-interleaved ring buffer organization  */
   err = snd_pcm_hw_params_set_access (sound_card_handle, hw_params,
                                       hw_config->access_type);
   if ( S_SUCCESS>err )
@@ -338,7 +340,9 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /** @b snd_pcm_hw_params Apply the configuration to the sound card */
+  /** @b snd_pcm_hw_params Apply the configuration to the sound card, on success
+   * it will set the sound card to  SND_PCM_STATE_SETUP state and will call
+   * the function @a snd_pcm_prepare() automatically */
   err = snd_pcm_hw_params (sound_card_handle, hw_params);
   if ( S_SUCCESS>err )
   {
