@@ -1,13 +1,13 @@
 /*******************************************************************************
- * @file         : basic_pcm.c
- * @brief        : Simple client for the ALSA sequencer
+ * @file          basic_pcm.c
+ * @brief         Simple client for the ALSA playback
  *
- * @description  : Simple client for the ALSA sequencer
+ * Simple client for the ALSA playback
  *
- * @notes        : Link using -lasound and -lm, based on the HOWTO
+ * @note          Link using -lasound and -lm, based on the HOWTO
  *                 https://users.suse.com/~mana/alsa090_howto.html
  *
- * @author       : hkxs
+ * @author        hkxs
  *
  *
  * MIT License
@@ -84,14 +84,25 @@ typedef enum
 typedef struct
 {
   uint32_t sample_rate; /**< Desired sample rate*/
+
   uint32_t exact_sample_rate; /**< Sample rate set by the sound card */
-  sub_unit_direction sample_rate_direction;
-  sub_unit_direction frame_size_direction;
-  snd_pcm_uframes_t period_size; /**< size of the frames in bytes*/
-  uint32_t periods;
-  snd_pcm_access_t access_type;
-  uint32_t num_channels;
-  snd_pcm_format_t format;
+
+  sub_unit_direction sample_rate_direction; /**< type of strategy used for set
+   unsupported sampling rates, see @ref sub_unit_direction*/
+
+  sub_unit_direction frame_size_direction;/**< type of strategy used for set
+   unsupported framse size, see @ref sub_unit_direction*/
+
+  snd_pcm_uframes_t period_size; /**< control the PCM interrupt */
+
+  uint32_t periods; /**< frequency to update the status */
+
+  snd_pcm_access_t access_type; /**< Type of access mode see
+   @ref configure_hw (@b snd_pcm_hw_params_set_access) */
+
+  uint32_t num_channels; /**< Number of channels to use */
+  snd_pcm_format_t format; /**< Audio format to be used, seed@ref configure_hw
+   @b snd_pcm_hw_params_set_format*/
 } hw_configuration;
 
 /*------------------------------------------------------------------------------
@@ -105,9 +116,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config);
  *
  * @brief Main function of the program
  *
- *  Main function of the program
- *
- * @param
+ * Main function of the program
  *
  * @return int  @a S_SUCCESS in case of success, @a S_ERROR otherwise
  *
@@ -122,14 +131,14 @@ int main (void)
 
   /** @b hw_configuration Hardware configuration that we want
    * @li sample rate = 48KHz
-   * @li frame size = 1024 bytes
+   * @li frame size = 4800bytes
    * @li access type = non interleaved, this means that each period contains
    *                   first all sample data for the first channel followed by
    *                   the sample data for the second channel */
   hw_configuration hw_configuration = { .sample_rate = 48000u,
       .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
-      .period_size = 1024, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
-      .num_channels = 2, .periods = 1, .frame_size_direction = E_EXACT_CONFIG,
+      .period_size = 2048, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
+      .num_channels = 2, .periods = 2, .frame_size_direction = E_EXACT_CONFIG,
       .format = SND_PCM_FORMAT_S16_LE };
 
   /** @b pcm_name Name of the PCM device, like @a plughw:0,0
@@ -172,12 +181,11 @@ int main (void)
 
   /* Now it's time to generate a signal to test the output of the sound card */
   int16_t *noise;
-  uint8_t noise_frames = 23; /*0.5s ~= 23*1024/48000*/
   uint32_t noise_size;
 
   printf ("Generating random noise\n");
-  noise_size = hw_configuration.period_size*noise_frames;
-  noise = (int16_t*)malloc (sizeof(noise_size)*noise_size);
+  noise_size = hw_configuration.period_size*hw_configuration.periods;
+  noise = (int16_t*)malloc (sizeof(noise)*noise_size);
 
   if ( NULL==noise )
   {
@@ -198,7 +206,7 @@ int main (void)
    *  is different depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
    * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
-  for (uint8_t i = 0u; i<noise_frames; i++)
+  for (uint8_t i = 0u; i<10; i++)
   {
     err = snd_pcm_writei (pcm_handle, noise, hw_configuration.period_size);
 
@@ -229,7 +237,7 @@ int main (void)
 /******************************************************************************
  * @fn int8_t configure_hw(snd_pcm_t*, hw_configuration*)
  *
- * @brief This function is used to configure the HW of the sound card
+ * @brief Configure the HW of the sound card
  *
  * Set HW parameters defined in hw_configuration, part of this can
  * be done also with @a snd_pcm_set_params but I prefer to do it manually to
@@ -329,8 +337,24 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
     return S_ERROR;
   }
 
-  /** @b snd_pcm_hw_params_set_buffer_size_near buffer_size is the approximate
-   *  target buffer size in frames */
+  /** @b snd_pcm_hw_params_set_buffer_size_near set the size of the buffer (in
+   * bytes). This is calculated using the period_size and period
+   * @f$  buffer\_size = period\_size*period @f$ where
+   * @li @a period: number of divisions of the ring buffer
+   * @li @a period_size: this control when the PCM interrupt is generated,
+   *         e.g. 44.1Khz, and the period_size to 4410 frames the interrupt will
+   *         be generated every 100ms
+   *
+   * The buffer size  is also used to determine the latency:
+   * @f$ latency = \frac{period\_size*period}{sample\_rate*frame} =
+   * \frac{buffer\_size}{sample\_rate*frame} @f$
+   * where:
+   *
+   * @li frame: number of bytes required for all the samples for all the
+   * channels, e.g.:
+   * @li 1 frame of a Stereo 48khz 16bit PCM stream is 4 bytes.
+   * @li 1 frame of a 5.1 48khz 16bit PCM stream is 12 bytes.
+   *  */
   buffer_size = (hw_config->period_size*hw_config->periods)>>2;
   err = snd_pcm_hw_params_set_buffer_size_near (sound_card_handle, hw_params,
                                                 &buffer_size);
