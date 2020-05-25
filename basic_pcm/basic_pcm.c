@@ -83,9 +83,7 @@ typedef enum
 /** Structure used to setup the desired hw configuration */
 typedef struct
 {
-  uint32_t sample_rate; /**< Desired sample rate*/
-
-  uint32_t exact_sample_rate; /**< Sample rate set by the sound card */
+  uint32_t sample_rate; /**< Desired/Supported sample rate*/
 
   sub_unit_direction sample_rate_direction; /**< type of strategy used for set
    unsupported sampling rates, see @ref sub_unit_direction*/
@@ -135,11 +133,10 @@ int main (void)
    * @li access type = non interleaved, this means that each period contains
    *                   first all sample data for the first channel followed by
    *                   the sample data for the second channel */
-  hw_configuration hw_configuration = { .sample_rate = 48000u,
-      .exact_sample_rate = 0u, .sample_rate_direction = E_EXACT_CONFIG,
-      .period_size = 2048, .access_type = SND_PCM_ACCESS_RW_INTERLEAVED,
-      .num_channels = 2, .periods = 2, .frame_size_direction = E_EXACT_CONFIG,
-      .format = SND_PCM_FORMAT_S16_LE };
+  hw_configuration hw_configuration = { .sample_rate = 48000u, .periods = 2,
+      .period_size = 2048, .sample_rate_direction = E_EXACT_CONFIG,
+      .access_type = SND_PCM_ACCESS_RW_INTERLEAVED, .num_channels = 2,
+      .frame_size_direction = E_EXACT_CONFIG, .format = SND_PCM_FORMAT_S16_LE };
 
   /** @b pcm_name Name of the PCM device, like @a plughw:0,0
    * @li The first number is the number of the soundcard
@@ -305,19 +302,20 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
    *  In case it's not supported by the sound card, it will set the nearest
    *  sample rate supported,, the variable @a hw_configuration.exact_sample_rate
    *   will have the configured sample rate */
-  hw_config->exact_sample_rate = hw_config->sample_rate;
+  uint32_t desired_sample_rate;
+  desired_sample_rate = hw_config->sample_rate;
   err = snd_pcm_hw_params_set_rate_near (sound_card_handle, hw_params,
-                                         &hw_config->exact_sample_rate,
+                                         &hw_config->sample_rate,
                                          &hw_config->sample_rate_direction);
   if ( S_SUCCESS>err )
   {
     printf ("configure_hw Error: setting sample rate, Err = %d\n", err);
     return S_ERROR;
   }
-  if ( hw_config->sample_rate!=hw_config->exact_sample_rate )
+  if ( hw_config->sample_rate!=desired_sample_rate )
   {
     printf ("configure_hw Warning: rate %d not supported, using = %d Hz\n",
-            hw_config->sample_rate, hw_config->exact_sample_rate);
+            desired_sample_rate, hw_config->sample_rate);
   }
 
   err = snd_pcm_hw_params_set_channels (sound_card_handle, hw_params,
