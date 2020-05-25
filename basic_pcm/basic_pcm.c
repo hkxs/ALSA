@@ -43,8 +43,13 @@
  * Module Preprocessor Constants
  -----------------------------------------------------------------------------*/
 #define S_SUCCESS               (0x00) /**< used to return success*/
-#define S_ERROR                 (0x01)/**< used to return error*/
-#define PCM_OPEN_STANDARD_MODE  (0x00)/**< define standard mode*/
+#define S_ERROR                 (0x01) /**< used to return error*/
+#define PCM_OPEN_STANDARD_MODE  (0x00) /**< define standard mode*/
+#define Q_14                    (1<<14)/**< Used to convert from float to Q14*/
+#define FREQUENCY               (469u) /**< I choose this frequency to test
+                                            because for 2048samples at 48Khz the
+                                             mismatch between frames will be
+                                              minimized */
 
 /*------------------------------------------------------------------------------
  * Module Typedefs
@@ -107,6 +112,8 @@ typedef struct
  * Function Prototypes
  -----------------------------------------------------------------------------*/
 int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config);
+int8_t generate_sin (int16_t *data, uint16_t f, uint16_t fs,
+                     uint32_t data_length);
 
 /******************************************************************************
  *
@@ -177,14 +184,15 @@ int main (void)
   }
 
   /* Now it's time to generate a signal to test the output of the sound card */
-  int16_t *noise;
-  uint32_t noise_size;
+  int16_t *sine_wave;
+  uint32_t sine_size;
+  uint8_t number_of_frames = 46; /*40*2048/4800 = 1.96s ~= 2s*/
 
   printf ("Generating random noise\n");
-  noise_size = hw_configuration.period_size*hw_configuration.periods;
-  noise = (int16_t*)malloc (sizeof(noise)*noise_size);
+  sine_size = hw_configuration.period_size*hw_configuration.periods;
+  sine_wave = (int16_t*)malloc (sizeof(sine_wave)*sine_size);
 
-  if ( NULL==noise )
+  if ( NULL==sine_wave )
   {
     printf ("Error allocating memory for the audio signal\n");
     snd_pcm_close (pcm_handle);
@@ -192,20 +200,25 @@ int main (void)
     return S_ERROR;
   }
 
-  for (uint32_t i = 0u; i<noise_size; i++)
+  err = generate_sin (sine_wave, FREQUENCY, hw_configuration.sample_rate,
+                      sine_size);
+  if ( S_ERROR==err )
   {
-    noise[i] = (int16_t)random ();
-  }
+    printf ("Error generating sine wave\n");
+    free (sine_wave);
+    snd_pcm_close (pcm_handle);
 
+    return S_ERROR;
+  }
   printf ("Sending data to sound card\n");
 
   /** @b snd_pcm_writei With everything set we can start writing data the API
    *  is different depending of the access_type:
    * @li snd_pcm_writei for SND_PCM_ACCESS_MMAP_INTERLEAVED
    * @li snd_pcm_writen for SND_PCM_ACCESS_MMAP_NONINTERLEAVED */
-  for (uint8_t i = 0u; i<10; i++)
+  for (uint8_t i = 0u; i<number_of_frames; i++)
   {
-    err = snd_pcm_writei (pcm_handle, noise, hw_configuration.period_size);
+    err = snd_pcm_writei (pcm_handle, sine_wave, hw_configuration.period_size);
 
     /* if we fail we try to recover the stream state*/
     if ( S_SUCCESS>err )
@@ -217,14 +230,14 @@ int main (void)
     if ( S_SUCCESS>err )
     {
       printf ("Error writing data to the sound card\n");
-      free (noise);
+      free (sine_wave);
       snd_pcm_close (pcm_handle);
 
       return S_ERROR;
     }
   }
 
-  free (noise);
+  free (sine_wave);
   /* close the sound card */
   snd_pcm_close (pcm_handle);
 
@@ -240,8 +253,8 @@ int main (void)
  * be done also with @a snd_pcm_set_params but I prefer to do it manually to
  * learn a little more of the APIs ¯\_(ツ)_/¯
  *
- * @param[in] sound_card_handle     pointer to the handle of the sound card
- * @param[in] hw_config             pointer to desired hw configuration
+ * @param[in] *sound_card_handle     pointer to the handle of the sound card
+ * @param[in] *hw_config             pointer to desired hw configuration
  *
  * @return int8_t @a S_SUCCESS in case of success, @a S_ERROR otherwise
  *
@@ -353,7 +366,7 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
    * @li 1 frame of a Stereo 48khz 16bit PCM stream is 4 bytes.
    * @li 1 frame of a 5.1 48khz 16bit PCM stream is 12 bytes.
    *  */
-  buffer_size = (hw_config->period_size*hw_config->periods)>>2;
+  buffer_size = (hw_config->period_size*hw_config->periods);
   err = snd_pcm_hw_params_set_buffer_size_near (sound_card_handle, hw_params,
                                                 &buffer_size);
   if ( S_SUCCESS>err )
@@ -374,5 +387,50 @@ int8_t configure_hw (snd_pcm_t *sound_card_handle, hw_configuration *hw_config)
 
   printf ("HW configuration successful\n");
   return S_SUCCESS;
+}
+
+/******************************************************************************
+ *
+ * @fn int8_t generate_sin (int16_t*, uint16_t, uint16_t, uint32_t)
+ *
+ * @brief Generate a sine wave
+ *
+ * Generate a sine wave with the predefined frequency and it will returned in
+ * Q14
+ *
+ * @note This function is supposed to be used in interleaved mode, for this
+ *       reason the samples are stored directly in interleaved mode, e.g.
+ *       1. data[0] = val1, data for channel 1
+ *       2. data[1] = val1, data for channel 2
+ *       3. data[2] = val2, data for channel 1
+ *       4. data[3] = val2, data for channel 2
+ *
+ * @param[out] *data    Buffer to store the generated wave
+ * @param       f       Frequency of the sine wave
+ * @param       fs      Sampling frequency
+ * @param       data_length     Size of the data buffer
+ *
+ * @return int8_t
+ *
+ ******************************************************************************/
+int8_t generate_sin (int16_t *data, uint16_t f, uint16_t fs,
+                     uint32_t data_length)
+{
+
+  float sin_val;
+  uint8_t err = S_ERROR;
+
+  if ( NULL!=data )
+  {
+    for (uint32_t n = 0; n<data_length; n++)
+    {
+      sin_val = sin (2*M_PI*n*f/fs);
+      data[2*n] = (uint16_t)(sin_val*Q_14);
+      data[2*n+1] = data[2*n];
+    }
+    err = S_SUCCESS;
+  }
+
+  return err;
 }
 /*-------------- END OF FILE -------------------------------------------------*/
