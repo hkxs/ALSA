@@ -1,5 +1,5 @@
 /*******************************************************************************
- * @file          basic_pcm.c
+ * @file          basic_pcm_playback.c
  * @brief         Simple client for the ALSA playback
  *
  * Simple client for the ALSA playback
@@ -433,4 +433,5 @@ int8_t generate_sin (int16_t *data, uint16_t f, uint16_t fs,
 
   return err;
 }
+
 /*-------------- END OF FILE -------------------------------------------------*/
